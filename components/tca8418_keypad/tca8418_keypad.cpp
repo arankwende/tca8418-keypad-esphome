@@ -1,9 +1,7 @@
 #include "tca8418_keypad.h"
 #include "esphome/core/log.h"
-#include <driver/gpio.h>
 
-namespace esphome {
-namespace tca8418_keypad {
+namespace esphome::tca8418_keypad {
 
 static const char *const TAG = "tca8418_keypad";
 
@@ -11,15 +9,9 @@ void TCA8418KeypadComponent::setup() {
   ESP_LOGCONFIG(TAG, "Setting up TCA8418 Keypad...");
 
   // Configure interrupt pin if specified
-  if (this->interrupt_pin_ >= 0) {
-    gpio_config_t io_conf = {};
-    io_conf.pin_bit_mask = (1ULL << this->interrupt_pin_);
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    gpio_config(&io_conf);
-    ESP_LOGD(TAG, "Interrupt pin configured on GPIO%d", this->interrupt_pin_);
+  if (this->interrupt_pin_ != nullptr) {
+    this->interrupt_pin_->setup();
+    ESP_LOGD(TAG, "Interrupt pin configured");
   }
 
   // Test I2C communication by reading a register
@@ -219,8 +211,8 @@ void TCA8418KeypadComponent::flush_events() {
 
 void TCA8418KeypadComponent::loop() {
   // Check interrupt pin if configured (active low)
-  if (this->interrupt_pin_ >= 0) {
-    if (gpio_get_level(static_cast<gpio_num_t>(this->interrupt_pin_)) == 1) {
+  if (this->interrupt_pin_ != nullptr) {
+    if (this->interrupt_pin_->digital_read()) {
       // Interrupt not asserted (active low), no events pending
       return;
     }
@@ -323,8 +315,8 @@ void TCA8418KeypadComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Columns: %d", this->cols_);
   ESP_LOGCONFIG(TAG, "  Matrix size: %d keys (codes 1-%d)",
                 this->rows_ * this->cols_, this->rows_ * this->cols_);
-  if (this->interrupt_pin_ >= 0) {
-    ESP_LOGCONFIG(TAG, "  Interrupt Pin: GPIO%d", this->interrupt_pin_);
+  if (this->interrupt_pin_ != nullptr) {
+    LOG_PIN("  Interrupt Pin: ", this->interrupt_pin_);
   } else {
     ESP_LOGCONFIG(TAG, "  Interrupt Pin: Not configured (polling mode)");
   }
@@ -344,5 +336,4 @@ bool TCA8418KeypadComponent::read_register_(uint8_t reg, uint8_t *value) {
   return this->read_byte(reg, value);
 }
 
-}  // namespace tca8418_keypad
-}  // namespace esphome
+}  // namespace esphome::tca8418_keypad

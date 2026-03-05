@@ -1,8 +1,7 @@
 #include "tca8418_keypad_binary_sensor.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace tca8418_keypad {
+namespace esphome::tca8418_keypad {
 
 static const char *const TAG = "tca8418_keypad.binary_sensor";
 
@@ -38,5 +37,4 @@ void TCA8418KeypadBinarySensor::key_released(uint8_t key) {
   }
 }
 
-}  // namespace tca8418_keypad
-}  // namespace esphome
+}  // namespace esphome::tca8418_keypad

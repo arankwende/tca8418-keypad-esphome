@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import pins
 from esphome.components import i2c
 from esphome.const import CONF_ID
 
@@ -24,7 +25,7 @@ CONFIG_SCHEMA = (
             cv.GenerateID(): cv.declare_id(TCA8418KeypadComponent),
             cv.Optional(CONF_ROWS, default=6): cv.int_range(min=1, max=8),
             cv.Optional(CONF_COLS, default=4): cv.int_range(min=1, max=10),
-            cv.Optional(CONF_INTERRUPT_PIN): cv.int_range(min=0, max=48),
+            cv.Optional(CONF_INTERRUPT_PIN): pins.internal_gpio_input_pin_schema,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -41,4 +42,5 @@ async def to_code(config):
     cg.add(var.set_cols(config[CONF_COLS]))
 
     if CONF_INTERRUPT_PIN in config:
-        cg.add(var.set_interrupt_pin(config[CONF_INTERRUPT_PIN]))
+        pin = await cg.gpio_pin_expression(config[CONF_INTERRUPT_PIN])
+        cg.add(var.set_interrupt_pin(pin))

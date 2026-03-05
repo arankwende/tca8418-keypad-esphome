@@ -4,8 +4,7 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "../tca8418_keypad.h"
 
-namespace esphome {
-namespace tca8418_keypad {
+namespace esphome::tca8418_keypad {
 
 class TCA8418KeypadBinarySensor : public binary_sensor::BinarySensor,
                                    public Component,
@@ -26,5 +25,4 @@ class TCA8418KeypadBinarySensor : public binary_sensor::BinarySensor,
   uint8_t key_{0};
 };
 
-}  // namespace tca8418_keypad
-}  // namespace esphome
+}  // namespace esphome::tca8418_keypad

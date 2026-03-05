@@ -5,8 +5,7 @@
 #include "esphome/components/i2c/i2c.h"
 #include <vector>
 
-namespace esphome {
-namespace tca8418_keypad {
+namespace esphome::tca8418_keypad {
 
 // TCA8418 I2C Default Address
 static const uint8_t TCA8418_DEFAULT_ADDR = 0x34;
@@ -98,7 +97,7 @@ class TCA8418KeypadComponent : public Component, public i2c::I2CDevice {
 
   void set_rows(uint8_t rows) { this->rows_ = rows; }
   void set_cols(uint8_t cols) { this->cols_ = cols; }
-  void set_interrupt_pin(int8_t pin) { this->interrupt_pin_ = pin; }
+  void set_interrupt_pin(InternalGPIOPin *pin) { this->interrupt_pin_ = pin; }
 
   void register_listener(TCA8418KeypadListener *listener) { this->listeners_.push_back(listener); }
 
@@ -119,9 +118,8 @@ class TCA8418KeypadComponent : public Component, public i2c::I2CDevice {
 
   uint8_t rows_{0};  // 0 = auto-detect based on OMOTE (6 rows)
   uint8_t cols_{0};  // 0 = auto-detect based on OMOTE (4 cols)
-  int8_t interrupt_pin_{-1};
+  InternalGPIOPin *interrupt_pin_{nullptr};
   std::vector<TCA8418KeypadListener *> listeners_;
 };
 
-}  // namespace tca8418_keypad
-}  // namespace esphome
+}  // namespace esphome::tca8418_keypad
