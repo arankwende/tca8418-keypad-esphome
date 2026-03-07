@@ -4,7 +4,7 @@ from esphome import pins
 from esphome.components import i2c
 from esphome.const import CONF_ID
 
-CODEOWNERS = ["@omote"]
+CODEOWNERS = ["@arankwende"]
 DEPENDENCIES = ["i2c"]
 MULTI_CONF = True
 AUTO_LOAD = ["binary_sensor"]
