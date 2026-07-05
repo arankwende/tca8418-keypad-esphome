@@ -32,7 +32,9 @@ void TCA8418KeypadComponent::setup() {
   // Enable debouncing
   this->enable_debounce();
 
-  // Enable interrupts
+  // Drop any spurious events generated while reconfiguring pins
+  // (e.g. GPI edges from pull-ups settling), then enable interrupts.
+  this->flush_events();
   this->enable_interrupts();
 
   ESP_LOGCONFIG(TAG, "TCA8418 Keypad setup complete (%dx%d matrix)", this->rows_, this->cols_);
@@ -105,10 +107,12 @@ void TCA8418KeypadComponent::configure_keypad_matrix_() {
   this->write_register_(TCA8418_REG_GPIO_DIR2, 0x00);
   this->write_register_(TCA8418_REG_GPIO_DIR3, 0x00);
 
-  // Enable pull-ups on GPIO pins
-  this->write_register_(TCA8418_REG_GPIO_PULL1, remaining_rows);
-  this->write_register_(TCA8418_REG_GPIO_PULL2, remaining_cols2);
-  this->write_register_(TCA8418_REG_GPIO_PULL3, remaining_cols3);
+  // Keep internal pull-ups enabled on all pins.
+  // The GPIO_PULL registers are pull-up DISABLE registers (1 = disabled),
+  // and GPI pins used as buttons-to-GND need their pull-ups.
+  this->write_register_(TCA8418_REG_GPIO_PULL1, 0x00);
+  this->write_register_(TCA8418_REG_GPIO_PULL2, 0x00);
+  this->write_register_(TCA8418_REG_GPIO_PULL3, 0x00);
 
   // Enable GPI event mode for non-matrix pins (they generate key events too)
   this->write_register_(TCA8418_REG_GPI_EM1, remaining_rows);
