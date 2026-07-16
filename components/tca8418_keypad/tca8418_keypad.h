@@ -116,8 +116,8 @@ class TCA8418KeypadComponent : public Component, public i2c::I2CDevice {
   void process_key_events_();
   void configure_keypad_matrix_();
 
-  uint8_t rows_{0};  // 0 = auto-detect based on OMOTE (6 rows)
-  uint8_t cols_{0};  // 0 = auto-detect based on OMOTE (4 cols)
+  uint8_t rows_{6};  // matrix rows; always set from config (default 6)
+  uint8_t cols_{4};  // matrix cols; always set from config (default 4)
   InternalGPIOPin *interrupt_pin_{nullptr};
   std::vector<TCA8418KeypadListener *> listeners_;
 };

@@ -29,6 +29,14 @@ def validate_key_config(config):
     if not has_key and not has_row:
         raise cv.Invalid("Must specify either 'key' or both 'row' and 'col'.")
 
+    # Valid hardware key codes are 1-80 (matrix) and 97-114 (GPI ROW0-7 /
+    # COL0-9). Codes 81-96 are never emitted by the TCA8418.
+    if has_key and 81 <= config[CONF_KEY] <= 96:
+        raise cv.Invalid(
+            f"Key code {config[CONF_KEY]} is not valid: use 1-80 for matrix keys "
+            "or 97-114 for GPI keys (81-96 are unused)."
+        )
+
     return config
 
 

@@ -47,15 +47,9 @@ void TCA8418KeypadComponent::configure_keypad_matrix_() {
   // KP_GPIO2: COL7-COL0 (bits 7-0) - columns start in register 2
   // KP_GPIO3: COL9-COL8 (bits 1-0) - extra columns in register 3
 
-  // Default to OMOTE configuration if not specified
-  if (this->rows_ == 0) {
-    this->rows_ = 6;
-  }
-  if (this->cols_ == 0) {
-    this->cols_ = 4;
-  }
-
-  // Validate ranges
+  // rows_/cols_ are always supplied by the config schema (defaults 6x4), so
+  // they are guaranteed non-zero here. Clamp to the hardware maximums as a
+  // last-resort guard.
   if (this->rows_ > 8) {
     ESP_LOGW(TAG, "Rows capped at 8 (was %d)", this->rows_);
     this->rows_ = 8;
@@ -114,20 +108,15 @@ void TCA8418KeypadComponent::configure_keypad_matrix_() {
   this->write_register_(TCA8418_REG_GPIO_PULL2, 0x00);
   this->write_register_(TCA8418_REG_GPIO_PULL3, 0x00);
 
-  // Enable GPI event mode for non-matrix pins (they generate key events too)
+  // Enable GPI event mode for non-matrix pins. In event mode every make/break
+  // is pushed into the key-event FIFO and raises the key interrupt (K_INT), so
+  // these pins are delivered through the same path as matrix keys. We do NOT
+  // enable the register-level GPIO interrupt (GPIO_INT_EN) or configure
+  // GPIO_INT_LVL for them: that path raises a separate GPI_INT for state we
+  // never read, producing duplicate interrupts for the same key event.
   this->write_register_(TCA8418_REG_GPI_EM1, remaining_rows);
   this->write_register_(TCA8418_REG_GPI_EM2, remaining_cols2);
   this->write_register_(TCA8418_REG_GPI_EM3, remaining_cols3);
-
-  // Set interrupt level to FALLING (0 = falling edge)
-  this->write_register_(TCA8418_REG_GPIO_INT_LVL1, 0x00);
-  this->write_register_(TCA8418_REG_GPIO_INT_LVL2, 0x00);
-  this->write_register_(TCA8418_REG_GPIO_INT_LVL3, 0x00);
-
-  // Enable interrupts on non-matrix GPIO pins
-  this->write_register_(TCA8418_REG_GPIO_INT_EN1, remaining_rows);
-  this->write_register_(TCA8418_REG_GPIO_INT_EN2, remaining_cols2);
-  this->write_register_(TCA8418_REG_GPIO_INT_EN3, remaining_cols3);
 }
 
 void TCA8418KeypadComponent::enable_interrupts() {
@@ -136,8 +125,10 @@ void TCA8418KeypadComponent::enable_interrupts() {
     ESP_LOGE(TAG, "Failed to read CFG for enable_interrupts");
     return;
   }
-  // Enable key event interrupt, GPI interrupt, overflow interrupt
-  cfg |= TCA8418_CFG_KE_IEN | TCA8418_CFG_GPI_IEN | TCA8418_CFG_OVR_FLOW_IEN;
+  // Enable key event and overflow interrupts. GPI pins are configured in event
+  // mode (see configure_keypad_matrix_), so they arrive via the key-event FIFO
+  // and K_INT; the separate GPI interrupt is intentionally left disabled.
+  cfg |= TCA8418_CFG_KE_IEN | TCA8418_CFG_OVR_FLOW_IEN;
   // Set INT_CFG to reassert interrupt after 50us
   cfg |= TCA8418_CFG_INT_CFG;
   if (!this->write_register_(TCA8418_REG_CFG, cfg)) {
@@ -152,7 +143,7 @@ void TCA8418KeypadComponent::disable_interrupts() {
   if (!this->read_register_(TCA8418_REG_CFG, &cfg)) {
     return;
   }
-  cfg &= ~(TCA8418_CFG_KE_IEN | TCA8418_CFG_GPI_IEN);
+  cfg &= ~TCA8418_CFG_KE_IEN;
   this->write_register_(TCA8418_REG_CFG, cfg);
 }
 
@@ -235,16 +226,9 @@ void TCA8418KeypadComponent::loop() {
     this->write_register_(TCA8418_REG_INT_STAT, TCA8418_INT_K_INT);
   }
 
-  // Handle GPI events (non-matrix GPIO pins)
-  if (int_stat & TCA8418_INT_GPI_INT) {
-    this->process_key_events_();
-    // Clear GPIO interrupt status
-    this->write_register_(TCA8418_REG_GPIO_INT_STAT1, 0xFF);
-    this->write_register_(TCA8418_REG_GPIO_INT_STAT2, 0xFF);
-    this->write_register_(TCA8418_REG_GPIO_INT_STAT3, 0xFF);
-    // Clear the GPI interrupt
-    this->write_register_(TCA8418_REG_INT_STAT, TCA8418_INT_GPI_INT);
-  }
+  // Note: non-matrix GPI pins are configured in event mode, so their presses
+  // and releases arrive through the key-event FIFO above (K_INT). The separate
+  // GPI interrupt is not enabled, so it is not handled here.
 
   // Handle overflow
   if (int_stat & TCA8418_INT_OVR_FLOW_INT) {
@@ -317,8 +301,11 @@ void TCA8418KeypadComponent::dump_config() {
   }
   ESP_LOGCONFIG(TAG, "  Rows: %d", this->rows_);
   ESP_LOGCONFIG(TAG, "  Columns: %d", this->cols_);
-  ESP_LOGCONFIG(TAG, "  Matrix size: %d keys (codes 1-%d)",
-                this->rows_ * this->cols_, this->rows_ * this->cols_);
+  // Matrix codes are base-10 (key = row * 10 + col + 1), so they are not
+  // contiguous: the highest code is (rows - 1) * 10 + cols.
+  uint8_t max_code = (this->rows_ - 1) * 10 + this->cols_;
+  ESP_LOGCONFIG(TAG, "  Matrix size: %d keys (codes 1-%d, base-10 layout)",
+                this->rows_ * this->cols_, max_code);
   if (this->interrupt_pin_ != nullptr) {
     LOG_PIN("  Interrupt Pin: ", this->interrupt_pin_);
   } else {
