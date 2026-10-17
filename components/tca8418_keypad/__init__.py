@@ -1,8 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
+from esphome import automation, pins
 from esphome.components import i2c
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, CONF_TRIGGER_ID
 
 CODEOWNERS = ["@arankwende"]
 DEPENDENCIES = ["i2c"]
@@ -13,10 +13,14 @@ CONF_TCA8418_ID = "tca8418_keypad_id"
 CONF_ROWS = "rows"
 CONF_COLS = "cols"
 CONF_INTERRUPT_PIN = "interrupt_pin"
+CONF_ON_KEY = "on_key"
 
 tca8418_keypad_ns = cg.esphome_ns.namespace("tca8418_keypad")
 TCA8418KeypadComponent = tca8418_keypad_ns.class_(
     "TCA8418KeypadComponent", cg.Component, i2c.I2CDevice
+)
+KeyTrigger = tca8418_keypad_ns.class_(
+    "KeyTrigger", automation.Trigger.template(cg.uint8, cg.bool_)
 )
 
 CONFIG_SCHEMA = (
@@ -26,6 +30,9 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_ROWS, default=6): cv.int_range(min=1, max=8),
             cv.Optional(CONF_COLS, default=4): cv.int_range(min=1, max=10),
             cv.Optional(CONF_INTERRUPT_PIN): pins.internal_gpio_input_pin_schema,
+            cv.Optional(CONF_ON_KEY): automation.validate_automation(
+                {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(KeyTrigger)}
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -44,3 +51,9 @@ async def to_code(config):
     if CONF_INTERRUPT_PIN in config:
         pin = await cg.gpio_pin_expression(config[CONF_INTERRUPT_PIN])
         cg.add(var.set_interrupt_pin(pin))
+
+    for conf in config.get(CONF_ON_KEY, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(
+            trigger, [(cg.uint8, "key"), (cg.bool_, "pressed")], conf
+        )

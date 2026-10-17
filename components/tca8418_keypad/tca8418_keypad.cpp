@@ -1,5 +1,6 @@
 #include "tca8418_keypad.h"
 #include "esphome/core/log.h"
+#include <algorithm>
 
 namespace esphome::tca8418_keypad {
 
@@ -22,6 +23,21 @@ void TCA8418KeypadComponent::setup() {
     return;
   }
   ESP_LOGD(TAG, "Initial CFG register: 0x%02X", test_val);
+
+  // Warm boot (e.g. waking from deep sleep): the chip stayed powered and kept
+  // its configuration, and the key press that woke us is still in the FIFO.
+  // Keep that press instead of flushing it, so it can be replayed later.
+  if (this->matrix_already_configured_()) {
+    uint8_t event;
+    for (uint8_t i = 0; i < 10 && this->read_register_(TCA8418_REG_KEY_EVENT_A, &event) && event != 0; i++) {
+      if (this->wake_key_ == 0 && (event & TCA8418_KEY_PRESS_MASK))
+        this->wake_key_ = event & TCA8418_KEY_CODE_MASK;
+    }
+    this->flush_events();  // clear interrupt status
+    this->enable_interrupts();
+    ESP_LOGCONFIG(TAG, "TCA8418 already configured (warm boot), wake key: %d", this->wake_key_);
+    return;
+  }
 
   // Flush any pending events and clear interrupts
   this->flush_events();
@@ -117,6 +133,32 @@ void TCA8418KeypadComponent::configure_keypad_matrix_() {
   this->write_register_(TCA8418_REG_GPI_EM1, remaining_rows);
   this->write_register_(TCA8418_REG_GPI_EM2, remaining_cols2);
   this->write_register_(TCA8418_REG_GPI_EM3, remaining_cols3);
+}
+
+bool TCA8418KeypadComponent::matrix_already_configured_() {
+  const uint8_t rows = std::min<uint8_t>(this->rows_, 8);
+  const uint8_t cols = std::min<uint8_t>(this->cols_, 10);
+  const uint8_t want1 = (1 << rows) - 1;
+  const uint8_t want2 = cols <= 8 ? (1 << cols) - 1 : 0xFF;
+  const uint8_t want3 = cols <= 8 ? 0 : (1 << (cols - 8)) - 1;
+  uint8_t r1, r2, r3;
+  if (!this->read_register_(TCA8418_REG_KP_GPIO1, &r1) || !this->read_register_(TCA8418_REG_KP_GPIO2, &r2) ||
+      !this->read_register_(TCA8418_REG_KP_GPIO3, &r3))
+    return false;
+  // Power-on default is 0x00 for all three, so a match means we configured it before.
+  return want1 != 0 && r1 == want1 && r2 == want2 && (r3 & 0x03) == want3;
+}
+
+void TCA8418KeypadComponent::replay_wake_key() {
+  const uint8_t key = this->wake_key_;
+  this->wake_key_ = 0;
+  if (key == 0)
+    return;
+  ESP_LOGI(TAG, "Replaying wake key %d", key);
+  for (auto *listener : this->listeners_)
+    listener->key_pressed(key);
+  for (auto *listener : this->listeners_)
+    listener->key_released(key);
 }
 
 void TCA8418KeypadComponent::enable_interrupts() {

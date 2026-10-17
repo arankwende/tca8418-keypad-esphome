@@ -48,6 +48,22 @@ binary_sensor:
     name: "Power Button"
 ```
 
+### Any-key automation
+
+`on_key` fires for every key event, with `key` (raw key code) and `pressed`
+(`true` on press, `false` on release). Handy for an idle/sleep timer:
+
+```yaml
+tca8418_keypad:
+  id: keypad
+  on_key:
+    - if:
+        condition:
+          lambda: 'return pressed;'
+        then:
+          - script.execute: reset_idle_timer
+```
+
 ## Configuration variables
 
 ### `tca8418_keypad`
@@ -58,6 +74,8 @@ binary_sensor:
 - **interrupt_pin** (Optional): GPIO wired to the TCA8418 INT output.
   When set, the bus is only read after INT asserts; otherwise the
   component polls over I2C every loop.
+- **on_key** (Optional, [Automation](https://esphome.io/automations/)):
+  runs on every key event; variables `key` (`uint8_t`) and `pressed` (`bool`).
 
 ### `binary_sensor`
 
@@ -80,6 +98,19 @@ deep_sleep:
     allow_other_uses: true
 ```
 
+The key that woke the device is not lost: on a warm boot (the TCA8418 kept
+its configuration while the ESP slept) the component keeps that press and
+exposes it as `id(keypad).get_wake_key()`. Replay it once the device is ready,
+for example when Home Assistant connects:
+
+```yaml
+api:
+  on_client_connected:
+    - lambda: 'id(keypad).replay_wake_key();'
+```
+
+Use `id(keypad).clear_wake_key();` to drop it instead (e.g. for a power key).
+
 Before entering deep sleep, drain the FIFO so a pending (release) event
 doesn't hold INT low and wake you straight back up:
 
@@ -93,5 +124,7 @@ doesn't hold INT low and wake you straight back up:
 | Method | Purpose |
 |---|---|
 | `id(keypad).flush_events();` | Drain the event FIFO and clear interrupts |
+| `id(keypad).get_wake_key();` | Key code that woke the device from deep sleep (0 = none) |
+| `id(keypad).replay_wake_key();` / `clear_wake_key();` | Deliver the wake key to its binary sensors as press + release, or drop it |
 | `id(keypad).disable_interrupts();` / `enable_interrupts();` | Mask/unmask key event interrupts |
 | `id(keypad).disable_debounce();` / `enable_debounce();` | Control the hardware debouncer |

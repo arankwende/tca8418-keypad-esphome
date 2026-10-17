@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/components/i2c/i2c.h"
@@ -110,16 +111,38 @@ class TCA8418KeypadComponent : public Component, public i2c::I2CDevice {
   void enable_debounce();
   void disable_debounce();
 
+  /// Key code (1-114) whose press woke the device from deep sleep, or 0.
+  /// Only set on a warm boot, when the TCA8418 kept its configuration (it
+  /// stays powered while the ESP sleeps) and still had the press queued.
+  uint8_t get_wake_key() const { return this->wake_key_; }
+  /// Deliver the wake key to listeners as a press + release, then forget it.
+  /// Call this once whatever the key needs is ready (e.g. the API connected).
+  void replay_wake_key();
+  /// Forget the wake key without delivering it.
+  void clear_wake_key() { this->wake_key_ = 0; }
+
  protected:
   bool write_register_(uint8_t reg, uint8_t value);
   bool read_register_(uint8_t reg, uint8_t *value);
   void process_key_events_();
   void configure_keypad_matrix_();
+  /// True if KP_GPIO1..3 already hold the matrix layout we would write.
+  bool matrix_already_configured_();
 
   uint8_t rows_{6};  // matrix rows; always set from config (default 6)
   uint8_t cols_{4};  // matrix cols; always set from config (default 4)
   InternalGPIOPin *interrupt_pin_{nullptr};
+  uint8_t wake_key_{0};
   std::vector<TCA8418KeypadListener *> listeners_;
+};
+
+/// Fires for every key event (matrix or GPI) with the raw key code and
+/// whether it was a press (true) or release (false).
+class KeyTrigger : public Trigger<uint8_t, bool>, public TCA8418KeypadListener {
+ public:
+  explicit KeyTrigger(TCA8418KeypadComponent *parent) { parent->register_listener(this); }
+  void key_pressed(uint8_t key) override { this->trigger(key, true); }
+  void key_released(uint8_t key) override { this->trigger(key, false); }
 };
 
 }  // namespace esphome::tca8418_keypad
